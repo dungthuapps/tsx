@@ -1,2 +1,2 @@
 pandas
-numpy
+numpy~=1.19.1
