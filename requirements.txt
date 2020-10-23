@@ -1,2 +1,4 @@
+numpy
+pyts
+scikit-learn
 pandas
-numpy~=1.19.1
