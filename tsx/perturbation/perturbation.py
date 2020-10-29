@@ -32,19 +32,19 @@ class Perturbation(ABC):
 
     @abstractmethod
     def __segment__(self, x):
+        # Todo general segmentation method for matrix.
         raise NotImplementedError()
 
-    def __get_replacements__(self, x, **_kwargs):
+    def __get_replacements__(self, x, x_segmented=None, labels=None, **_kwargs):
         """Prepare replacement vectors corresponding to each segments/labels.
 
         Notice:
             - replacement r_i same shape with z'
         """
-        if self.x_segmented is None:
-            self.__segment__(x)
+        if x_segmented is None:
+            x_segmented = self.x_segmented
+            labels = self.labels
 
-        x_segmented = self.x_segmented
-        labels = self.labels
         _replacement_fn = self._replacement_fn
 
         r = _replacement_fn(x=x, x_segmented=x_segmented, labels=labels, **_kwargs)
@@ -67,17 +67,15 @@ class Perturbation(ABC):
         :param z_prime: (np.array) a binary vector
             if z_prime[i] == 0, replacements[i] will be used to perturb the segment.
         """
-        if self.x_segmented is None:
-            self.__segment__(x)
         if replacements is None:
             replacements = self.replacements
-        if replacements is None:
-            replacements = self.__get_replacements__(x)
 
         labels = self.labels
         x_segmented = self.x_segmented
         n_segments = len(labels)
 
+        if isinstance(replacements, (int, float)):
+            replacements = np.full_like(labels, fill_value=replacements)
         assert len(z_prime) == len(replacements) == len(labels), \
             f"Replacements length {len(replacements)} not match with windows features {len(z_prime)}."
         assert x_segmented.shape == x.shape, \
@@ -119,15 +117,19 @@ class Perturbation(ABC):
         pi = np.exp(-d * gamma)
         return pi
 
-    def perturb(self, x, n_samples=10, **_kwargs):
+    def perturb(self, x, n_samples=10, replacements=None, **_kwargs):
         """Perturb x."""
-        self.__segment__(x)
-        replacements = self.__get_replacements__(x)
+        self.labels, self.x_segmented = self.__segment__(x)
+
+        if replacements is not None:
+            self.replacements = replacements
+        else:
+            self.replacements = self.__get_replacements__(x, self.x_segmented, self.labels)
 
         # Todo: try to use numpy native function instead of for loop
         for i in range(n_samples):
             z_prime = self.__get_z_prime__()
-            z = self.__get_z__(x, z_prime, replacements)
+            z = self.__get_z__(x, z_prime, self.replacements)
             pi_z = self.__get_pi__(x, z)
             yield z_prime, z, pi_z
 
@@ -145,6 +147,24 @@ class Perturbation(ABC):
             _idx = x_segmented == labels[i]
             r[i] = np.average(x[_idx])
         return r
+
+    @staticmethod
+    def global_mean(x, labels, **_kwargs):
+        r = np.zeros_like(labels)
+        r.fill(np.average(x))
+        return r
+
+    @staticmethod
+    def local_noise(x, x_segmented, labels, **_kwargs):
+        pass
+
+    @staticmethod
+    def global_noise(x, labels, **_kwargs):
+        pass
+
+    @staticmethod
+    def reference_set(ref_set, labels, **_kwargs):
+        pass
 
 
 class TimeSeriesPerturbation(Perturbation):
@@ -175,14 +195,14 @@ class TimeSeriesPerturbation(Perturbation):
             for j in range(n_windows):
                 x_segmented[i, start[j]:end[j]] = i * n_windows + j
 
-        self.labels = np.unique(x_segmented)
-        self.x_segmented = x_segmented
+        labels = np.unique(x_segmented)
+        x_segmented = x_segmented
 
-        # return self.labels, self.x_segmented
+        return labels, x_segmented
 
     def __get_pi__(self, x, z, **kwargs):
         """Override distance function for Time Series."""
         n_features, n_steps = x.shape
         gamma = 1 / n_steps
-        pi = super().__get_pi__(x, z, gamma)
-        return pi
+
+        return super().__get_pi__(x, z, gamma)
