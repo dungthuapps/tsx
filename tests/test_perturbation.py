@@ -1,5 +1,6 @@
 import numpy as np
 from tsx.perturbation import TimeSeriesPerturbation
+from tsx.xai.lime import LIMETimeSeries
 
 mts = np.array([np.arange(1, 9), np.arange(2, 10)])
 uts = np.arange(1, 9).reshape(1, -1)
@@ -19,3 +20,10 @@ def test_perturbation_time_series():
         z_prime, z, pi_z = samples[0]
         if 0 in z_prime:
             assert replacements in z
+
+
+def test_lime_linear():
+    ts_lime = LIMETimeSeries(window_size=2, sample_size=100)
+    xai_model = ts_lime.explain(mts,
+                                predict_fn=lambda x: np.random.randint(100))
+    assert len(xai_model.coef_) == len(ts_lime._perturb.labels)
