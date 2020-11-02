@@ -1,10 +1,26 @@
 """Implementation of LIME for Time Series."""
 import logging
 import numpy as np
-from abc import ABC
-from sklearn.linear_model import Lasso
+import pandas as pd
 
+from abc import ABC
+from sklearn import linear_model
+from sklearn.base import BaseEstimator
 from ..perturbation import TimeSeriesPerturbation
+
+
+class XAIModels:
+    """Supporting Estimators for XAI.
+
+    reference:
+        - https://scikit-learn.org/stable/modules/classes.html#module-sklearn.linear_model
+        - https://scikit-learn.org/stable/modules/linear_model.html#linear-model
+    """
+    # Regression (Forecasting)
+    Lasso = linear_model.Lasso(alpha=.5, fit_intercept=True)
+
+    # Classifier
+    Ridge = linear_model.Ridge(alpha=.5, fit_intercept=True)
 
 
 class LIMEAbstract(ABC):
@@ -14,11 +30,31 @@ class LIMEAbstract(ABC):
         self.sample_size = sample_size
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def __predict__(self, **kwargs):
+        self._xai_estimator = None
+        self._perturbator = None
+
+    def explain(self, x, predict_fn, **kwargs):
         raise NotImplementedError()
 
-    def explain(self, x, predict_fn=None, **kwargs):
-        raise NotImplementedError()
+    @property
+    def xai_estimator(self):
+        return self._xai_estimator
+
+    @xai_estimator.setter
+    def xai_estimator(self, v):
+        if not isinstance(v, BaseEstimator) or 'fit' not in dir(v):
+            raise ValueError("The estimator not supported by sklearn.")
+        self._xai_estimator = v
+
+    @property
+    def perturb_obj(self):
+        return self._perturbator
+
+    @perturb_obj.setter
+    def perturb_obj(self, v):
+        if 'perturb' not in dir(v):
+            raise ValueError("Not found perturb function in the class.")
+        self._perturbator = v
 
 
 class LIMETimeSeries(LIMEAbstract):
@@ -26,31 +62,34 @@ class LIMETimeSeries(LIMEAbstract):
 
     def __init__(self, scale='normal', perturb_method='zeros',
                  window_size=3, off_prob=0.5, sample_size=10, **kwargs):
+        super().__init__(sample_size, **kwargs)
+
+        # MTS Time Series Initialization
         self.scale = scale
         self.window_size = window_size
+        self.n_steps = 0
+        self.n_segments = 0
+        self.n_features = 0
+
+        # General perturbation Initialization
         self.perturb_method = perturb_method
         self.off_p = off_prob
 
-        # Todo: Generalize this to support also Frequency TS Slicing
-        self._perturb = self._perturb = TimeSeriesPerturbation(
-            window_size=self.window_size,
-            replacement_method=self.perturb_method,
-            off_p=self.off_p
-        )
+        # Todo: Generalize
+        #   - Frequency Slice
+        #   - Time Slice
+        #   - XAI-Estimators mapping
 
-        # Todo: Generalize xai_model (can also try with LogisticRegression)
-        self.xai_estimator = Lasso(fit_intercept=True)
-        super().__init__(sample_size, **kwargs)
+        self.perturb_obj = TimeSeriesPerturbation(window_size, off_prob, perturb_method)
+        self.xai_estimator = XAIModels.Lasso
 
-    def __predict__(self, z, **kwargs):
-        # Todo: deep learning models. (if)
-        return 1
-
-    def explain(self, x, predict_fn=None, **kwargs):
-        if predict_fn is None:
-            predict_fn = self.__predict__
-        samples = self._perturb.perturb(x, n_samples=self.sample_size, **kwargs)
-        xai_model = self.xai_estimator
+    def explain(self, x, predict_fn, **kwargs):
+        assert np.ndim(x) == 2, \
+            "Only 2 dimension accepted. If univariate time series please use np.reshape(-1, 1)"
+        self.n_features, self.n_steps = x.shape
+        self.n_segments = (self.n_steps // self.window_size) + int(bool(self.n_steps % self.window_size))
+        samples = self._perturbator.perturb(x, n_samples=self.sample_size, **kwargs)
+        xai_estimator = self.xai_estimator
 
         self.logger.info("Fitting xai-model.")
 
@@ -63,7 +102,20 @@ class LIMETimeSeries(LIMEAbstract):
             z_hat.append(predict_fn(z))
             sample_weight.append(pi_z)
 
-        xai_model.fit(np.stack(z_prime),
-                      np.stack(z_hat),
-                      np.stack(sample_weight))
-        return xai_model
+        xai_estimator.fit(np.stack(z_prime),
+                          np.stack(z_hat),
+                          np.stack(sample_weight))
+        self.logger.info("Updated xai estimator.")
+
+    def plot_coef(self, feature_names=None, scaler=None, **kwargs):
+        coef = self.xai_estimator.coef_
+        coef_df = pd.DataFrame(coef.reshape(self.n_segments, self.n_features))
+        if feature_names:
+            coef_df.columns = feature_names
+        if scaler:
+            scaler.fit(coef_df.values)
+            coef_df = pd.DataFrame(data=scaler.transform(coef_df.values),
+                                   columns=coef_df.columns)
+        kwargs['kind'] = kwargs.get('kind') or 'bar'
+        kwargs['subplots'] = kwargs.get('subplots') or 1
+        coef_df.plot(**kwargs)
