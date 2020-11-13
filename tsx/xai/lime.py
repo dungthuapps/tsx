@@ -118,6 +118,19 @@ class LIMETimeSeries(LIMEAbstract):
                           np.stack(self._sample_weight))
         self.logger.info("Updated xai estimator.")
 
+    def explain_instances(self, instances, predict_fn, **kwargs):
+        # Todo add to use explain, and in default n_instance = 1
+        #   reshape to (n_instances, n_features, n_steps)
+        coef = []
+        for x in instances:
+            self.explain(x, predict_fn, **kwargs)
+            coef.append(self.xai_estimator.coef_)
+        coef = np.stack(coef)
+        coef_mean = coef.mean(axis=0)
+        assert self.xai_estimator.coef_.shape == coef_mean.shape, \
+            "Not same shape between 2 coefficients"
+        self.xai_estimator.coef_ = coef_mean
+
     def plot_coef(self, feature_names=None, scaler=None, **kwargs):
         coef = self.xai_estimator.coef_
         coef_df = pd.DataFrame(coef.reshape(self.n_segments, self.n_features))
