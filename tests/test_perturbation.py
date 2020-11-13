@@ -4,7 +4,6 @@ import pandas as pd
 
 from tsx.perturbation import TimeSeriesPerturbation
 from tsx.xai.lime import LIMETimeSeries
-from matplotlib import pyplot as plt
 
 DATA_DIR = "tests/data" if os.path.isdir("tests") else "data"
 mts = np.array([np.arange(1, 9), np.arange(2, 10)])
@@ -35,9 +34,6 @@ def test_lime_linear():
 
 
 def load_data_set_bejin():
-    import pandas as pd
-    from sklearn.preprocessing import LabelEncoder
-
     data_link = f"{DATA_DIR}/pollution.csv"
     df = pd.read_csv(data_link)
 
@@ -48,7 +44,7 @@ def load_data_set_bejin():
     return df
 
 
-def test_lime_with_wavenet_and_bejin():
+def test_lime_with_two_models():
     import tensorflow as tf
     from sklearn.preprocessing import MinMaxScaler, LabelEncoder
     # Prepare data set
@@ -70,48 +66,47 @@ def test_lime_with_wavenet_and_bejin():
     wavenet = tf.keras.models.load_model(f"{DATA_DIR}/wavenet_mts_128_1.h5")
     lstm = tf.keras.models.load_model(f"{DATA_DIR}/lstm_mts_128_1.h5")
 
-    def predict_fn(z, model=lstm):
-        z = z.reshape(1, 128, 7)
+    def predict_fn(z, model):
+        _, steps, features = model.input.shape
+        z = z.reshape((1, steps, features))
         z_hat = model.predict(z)
         z_hat = y_scaler.inverse_transform(z_hat.reshape(-1, 1))  # to avoid zero coef_ for z_hat in[0, 1]
         z_hat = z_hat.ravel()
         return z_hat[0]
 
+    def lstm_predict_fn(z):
+        return predict_fn(z, model=lstm)
+
+    def wavenet_predict_fn(z):
+        return predict_fn(z, model=wavenet)
+
     # 1- Load an instance
     idx = 100
-    x = df[idx:idx + 128].copy()
+    x = df[idx:idx + 128].copy()    # 128 steps
     x[independents] = x_scaler.transform(x[independents].values)
-    ts_x = x[independents].values.reshape(7, 128)
+    ts_x = x[independents].values.reshape(7, 128)   # 7 features, 128 steps
 
     # 2- Choose XAI model
     #   Here - with LIME for Time Series (Perturbation)
     #       - XAI estimator in default is Lasso(alpha=0.5)
-    ts_lime = LIMETimeSeries(window_size=4, sample_size=100)
-    ts_lime.explain(ts_x, predict_fn=predict_fn)
-    # Todo - Multi run and average the coefficients
+    ts_lime = LIMETimeSeries(window_size=4, sample_size=100, perturb_method='zeros')
 
-    # 3- Visualization
+    ts_lime.explain(ts_x, predict_fn=lstm_predict_fn)
+    lstm_coef = ts_lime.xai_estimator.coef_
 
-    # 3-1 Data
-    # df.loc[:, df.columns != 'wind_direction'].plot(subplots=True)
+    ts_lime.explain(ts_x, predict_fn=wavenet_predict_fn)
+    wavenet_coef = ts_lime.xai_estimator.coef_
 
-    # 3-3 Training + Results (Optional)
+    assert lstm_coef.shape == wavenet_coef.shape
+    assert (wavenet_coef == lstm_coef).sum() != 0
 
-    # 3-2 Predictions vs Actual
-    #   Todo: Extend to interactive + windows selective (steps)
+    # Difference of two models
+    from sklearn.metrics.pairwise import euclidean_distances, cosine_similarity
+    x1 = wavenet_coef.reshape(1, -1)
+    x2 = lstm_coef.reshape(1, -1)
+    d = euclidean_distances(x1, x2)
+    s = cosine_similarity(x1, x2)
 
-    # 3-3 An instance x
-
-    # 3-4 A perturbed z_prime
-    #   Todo: a progress of randomly selecting z_prime
-
-    # 3-5 A perturbed z
-    #   Todo: a progress of randomly selecting z_prime
-
-    # 3-3 XAI Coefficient
-    #   Todo: Extend to interactive + windows selective (steps + w_size)
-
-    # 3-3b Alternative with scaled importance.
-    from sklearn.preprocessing import Normalizer
-    ts_lime.plot_coef(feature_names=independents)
-    ts_lime.plot_coef(feature_names=independents, scaler=Normalizer())
+    assert d > 0
+    assert s < 1.0
+    z_prime, perturbed_z, prediction, sample_weight = ts_lime.get_a_local_sample()

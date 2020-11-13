@@ -33,6 +33,11 @@ class LIMEAbstract(ABC):
         self._xai_estimator = None
         self._perturbator = None
 
+        self._z_prime = []
+        self._z = []
+        self._z_hat = []
+        self._sample_weight = []
+
     def explain(self, x, predict_fn, **kwargs):
         raise NotImplementedError()
 
@@ -89,22 +94,28 @@ class LIMETimeSeries(LIMEAbstract):
         self.n_features, self.n_steps = x.shape
         self.n_segments = (self.n_steps // self.window_size) + int(bool(self.n_steps % self.window_size))
         samples = self._perturbator.perturb(x, n_samples=self.sample_size, **kwargs)
+
         xai_estimator = self.xai_estimator
 
         self.logger.info("Fitting xai-model.")
 
-        # Todo: any way of using fit as generators to save memory?
-        z_prime = []
-        z_hat = []
-        sample_weight = []
-        for _z_prime, z, pi_z in samples:
-            z_prime.append(_z_prime)
-            z_hat.append(predict_fn(z))
-            sample_weight.append(pi_z)
+        # Reset samples before new explain
+        self._z_prime = []
+        self._z = []
+        self._z_hat = []
+        self._sample_weight = []
 
-        xai_estimator.fit(np.stack(z_prime),
-                          np.stack(z_hat),
-                          np.stack(sample_weight))
+        # Todo: any way of using fit as generators to save memory?
+        for _z_prime, z, pi_z in samples:
+            self._z_prime.append(_z_prime)
+            self._z.append(z)
+            self._z_hat.append(predict_fn(z))
+            self._sample_weight.append(pi_z)
+
+        # Fit to XAI estimator
+        xai_estimator.fit(np.stack(self._z_prime),
+                          np.stack(self._z_hat),
+                          np.stack(self._sample_weight))
         self.logger.info("Updated xai estimator.")
 
     def plot_coef(self, feature_names=None, scaler=None, **kwargs):
@@ -119,3 +130,12 @@ class LIMETimeSeries(LIMEAbstract):
         kwargs['kind'] = kwargs.get('kind') or 'bar'
         kwargs['subplots'] = kwargs.get('subplots') or 1
         coef_df.plot(**kwargs)
+
+    def get_a_local_sample(self):
+        if len(self._z_prime) > 0:
+            idx = np.random.choice(self.sample_size)
+            return (self._z_prime[idx].reshape(self.n_features, self.n_segments),
+                    self._z[idx].reshape(self.n_features, self.n_steps),
+                    self._z_hat[idx],
+                    self._sample_weight[idx]
+                    )
