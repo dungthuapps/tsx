@@ -1,5 +1,6 @@
-numpy
-pyts
-scikit-learn
-pandas
-tensorflow
+numpy~=1.18.5
+pyts~=0.11.0
+scikit-learn~=0.23.2
+pandas~=1.1.4
+tensorflow~=2.3.1
+biokit~=0.4.6

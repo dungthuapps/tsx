@@ -2,10 +2,14 @@
 import logging
 import numpy as np
 import pandas as pd
+import copy
 
 from abc import ABC
 from sklearn import linear_model
+from sklearn import metrics
 from sklearn.base import BaseEstimator
+from sklearn.model_selection import train_test_split
+
 from ..perturbation import TimeSeriesPerturbation
 
 
@@ -52,6 +56,10 @@ class LIMEAbstract(ABC):
         self._xai_estimator = v
 
     @property
+    def coef(self):
+        return self._xai_estimator.coef_
+
+    @property
     def perturb_obj(self):
         return self._perturbator
 
@@ -80,56 +88,80 @@ class LIMETimeSeries(LIMEAbstract):
         self.perturb_method = perturb_method
         self.off_p = off_prob
 
-        # Todo: Generalize
-        #   - Frequency Slice
-        #   - Time Slice
-        #   - XAI-Estimators mapping
-
         self.perturb_obj = TimeSeriesPerturbation(window_size, off_prob, perturb_method)
         self.xai_estimator = XAIModels.Lasso
+        self.score = np.nan
+
+    def _get_samples(self, x, predict_fn, sample_size, **kwargs):
+        samples = self._perturbator.perturb(x, n_samples=sample_size, **kwargs)
+
+        z_prime = []
+        z = []
+        z_hat = []
+        sample_weight = []
+
+        # Todo: any way of using fit as generators to save memory?
+        for _prime, _z, _pi_z in samples:
+            z_prime.append(_prime)
+            z.append(_z)
+            z_hat.append(predict_fn(_z))
+            sample_weight.append(_pi_z)
+        return z_prime, z, z_hat, sample_weight
 
     def explain(self, x, predict_fn, **kwargs):
         assert np.ndim(x) == 2, \
             "Only 2 dimension accepted. If univariate time series please use np.reshape(-1, 1)"
         self.n_features, self.n_steps = x.shape
         self.n_segments = (self.n_steps // self.window_size) + int(bool(self.n_steps % self.window_size))
-        samples = self._perturbator.perturb(x, n_samples=self.sample_size, **kwargs)
 
-        xai_estimator = self.xai_estimator
+        self._z_prime, self._z, self._z_hat, self._sample_weight = self._get_samples(x,
+                                                                                     predict_fn,
+                                                                                     self.sample_size,
+                                                                                     **kwargs)
+        z_prime = np.stack(self._z_prime)
+        z_hat = np.stack(self._z_hat)
+        weight = np.stack(self._sample_weight)
 
-        self.logger.info("Fitting xai-model.")
-
-        # Reset samples before new explain
-        self._z_prime = []
-        self._z = []
-        self._z_hat = []
-        self._sample_weight = []
-
-        # Todo: any way of using fit as generators to save memory?
-        for _z_prime, z, pi_z in samples:
-            self._z_prime.append(_z_prime)
-            self._z.append(z)
-            self._z_hat.append(predict_fn(z))
-            self._sample_weight.append(pi_z)
+        X_train, X_test, y_train, y_test, sw_train, sw_test = train_test_split(
+            z_prime,
+            z_hat,
+            weight,
+            test_size=0.3,
+            random_state=42
+        )
 
         # Fit to XAI estimator
-        xai_estimator.fit(np.stack(self._z_prime),
-                          np.stack(self._z_hat),
-                          np.stack(self._sample_weight))
+        self.xai_estimator.fit(X_train, y_train, sw_train)
         self.logger.info("Updated xai estimator.")
+
+        # Evaluate XAI estimator
+        # Reference: https://scikit-learn.org/stable/modules/model_evaluation.html#regression-metrics
+        y_pred = self.xai_estimator.predict(X_test)
+        # self.score = metrics.mean_squared_error(y_test, y_pred, sw_test)
+        self.score = metrics.r2_score(y_test, y_pred)
+
+        return copy.deepcopy(self)
 
     def explain_instances(self, instances, predict_fn, **kwargs):
         # Todo add to use explain, and in default n_instance = 1
         #   reshape to (n_instances, n_features, n_steps)
         coef = []
+        score = []
         for x in instances:
-            self.explain(x, predict_fn, **kwargs)
-            coef.append(self.xai_estimator.coef_)
+            m = self.explain(x, predict_fn, **kwargs)
+            coef.append(m.coef)
+            score.append(m.score)
+
         coef = np.stack(coef)
+        score = np.stack(score)
+
         coef_mean = coef.mean(axis=0)
+        score_mean = score.mean(axis=0)
         assert self.xai_estimator.coef_.shape == coef_mean.shape, \
             "Not same shape between 2 coefficients"
+
         self.xai_estimator.coef_ = coef_mean
+        self.score = score_mean
 
     def plot_coef(self, feature_names=None, scaler=None, **kwargs):
         coef = self.xai_estimator.coef_

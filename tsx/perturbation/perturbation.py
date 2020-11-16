@@ -6,6 +6,12 @@ from pyts.utils import segmentation
 __all__ = ['Perturbation', 'TimeSeriesPerturbation']
 
 
+# Todo: Generalize
+#   - Frequency Slice
+#   - Time Slice as individual vs as block (think of academic name)
+#   - XAI-Estimators mapping
+
+
 class Perturbation(ABC):
     """Base Perturbation with abstract methods."""
 
