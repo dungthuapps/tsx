@@ -24,4 +24,4 @@ def corr_matrix(coef_or_models, names=None, **corr_kwargs):
 def plot_corr(df_corr, method='square'):
     c = corrplot.Corrplot(df_corr)
     c.plot(method=method, shrink=.9, rotation=45)
-    c.plot(method=method, fontsize=8, colorbar=False)
+    # c.plot(method=method, fontsize=8, colorbar=False)

@@ -161,7 +161,7 @@ def test_lime_corr_between_xai_models():
     df_corr_2 = eva.corr_matrix(coef, names)
     assert all((df_corr_1 == df_corr_2).values.ravel())
 
-    # eva.plot_corr(df_corr_1)
+    eva.plot_corr(df_corr_1)
 
 
 def test_lime_sync_time_slicer():
