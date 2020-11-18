@@ -3,7 +3,8 @@ import numpy as np
 from abc import ABC, abstractmethod
 from pyts.utils import segmentation
 
-__all__ = ['Perturbation', 'TimeSeriesPerturbation']
+
+# __all__ = ['Perturbation', 'TimeSeriesPerturbation', 'SyncTimeSlicer']
 
 
 # Todo: Generalize
@@ -202,7 +203,6 @@ class TimeSeriesPerturbation(Perturbation):
                 x_segmented[i, start[j]:end[j]] = i * n_windows + j
 
         labels = np.unique(x_segmented)
-        x_segmented = x_segmented
 
         return labels, x_segmented
 
@@ -212,3 +212,105 @@ class TimeSeriesPerturbation(Perturbation):
         gamma = 1 / n_steps
 
         return super().__get_pi__(x, z, gamma)
+
+
+class SyncTimeSlicer(TimeSeriesPerturbation):
+    """Perturbation for Time Series. Supporting also multivariate time series."""
+
+    def _slices(self, x):
+        w_size = self.window_size
+        n_features, n_steps = x.shape
+
+        start, end, n_windows = segmentation(n_steps, w_size, overlapping=False)
+        return zip(start, end, range(n_windows))
+
+    @staticmethod
+    def _mask(arr, z_prime, slices):
+        i = 0
+        m = np.zeros_like(arr)
+        for s, e, l in slices:
+            m[s:e] = z_prime[i]
+            i += 1
+        return m
+
+    def _x_masked(self, x, z_prime):
+        slices = list(self._slices(x))
+        mask = np.apply_along_axis(self._mask, 1, x, z_prime, slices)
+        return mask
+
+    def _x_segmented(self, x, slices=None):
+        x_segmented = np.zeros_like(x)
+        if slices is None:
+            slices = list(self._slices(x))
+        for s, e, l in slices:
+            x_segmented[:, s: e] = l
+        return x_segmented
+
+    def _x_replacements(self, x, fn='zeros', slices=None, **fn_kwargs):
+        if slices is None:
+            slices = list(self._slices(x))
+        if isinstance(fn, str):
+            fn = eval(f"self.{fn}")
+        r = np.apply_along_axis(fn, axis=1, arr=x, slices=slices, **fn_kwargs)
+
+        return r
+
+    def _z_prime(self, x, **_kwargs):
+        """Sampling based on number of segments/features.
+
+        Sampling z_comma with shape (n_samples, n_windows)
+        """
+        x_segmented = self._x_segmented(x)
+        labels = np.unique(x_segmented)
+
+        p = self.off_p
+        n_segments = len(labels)
+
+        z_prime = np.random.choice([0, 1], size=n_segments, p=[p, 1 - p])
+        return z_prime
+
+    def _z(self, x, z_prime, replacements, **_kwargs):
+        mask = self._x_masked(x, z_prime)
+        assert x.shape == replacements.shape == mask.shape, "Not matching shape between x, replacements and mask."
+        z = x * mask + replacements * (1 - mask)
+        return z
+
+    @staticmethod
+    def zeros(x, **kwargs):
+        return np.zeros_like(x)
+
+    @staticmethod
+    def local_mean(x, slices, **kwargs):
+        r = np.zeros_like(x).astype(float)
+        for s, e, l in slices:
+            r[s:e] = np.average(x[s:e])
+        return r
+
+    @staticmethod
+    def global_mean(x, **kwargs):
+        r = np.zeros_like(x).astype(float)
+        r.fill(np.average(x))
+        return r
+
+    @staticmethod
+    def constant(x, value, **kwargs):
+        r = np.zeros_like(x).fill(value)
+        return r
+
+    def perturb(self, x, n_samples=10, replacements=None, **_kwargs):
+        """Perturb x."""
+        _slices = list(self._slices(x))
+        self.x_segmented = self._x_segmented(x)
+        self.labels = np.unique(self.x_segmented)
+
+        if isinstance(replacements, (int, float, bool)):
+            r = self._x_replacements(x, fn='constant', value=replacements)
+        else:
+            r = self._x_replacements(x, fn=self._replacement_fn)
+
+        # Todo: try to use numpy native function instead of for loop
+        for i in range(n_samples):
+            z_prime = self._z_prime(x)
+            z = self._z(x, z_prime, r)
+            pi_z = self.__get_pi__(x, z)
+            yield z_prime, z, pi_z
