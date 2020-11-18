@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 from tsx.xai.lime import LIMETimeSeries
+from tsx.xai import evaluation as eva
 
 DATA_DIR = "tests/data" if os.path.isdir("tests") else "data"
 mts = np.array([np.arange(1, 9), np.arange(2, 10)])
@@ -161,3 +162,69 @@ def test_lime_corr_between_xai_models():
     assert all((df_corr_1 == df_corr_2).values.ravel())
 
     # eva.plot_corr(df_corr_1)
+
+
+def test_lime_sync_time_slicer():
+    import tensorflow as tf
+    from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+    # Prepare data set
+    df = load_data_set_bejin()
+
+    # Encoding wind_direction to integer
+    encoder = LabelEncoder()
+    df["wind_direction"] = encoder.fit_transform(df["wind_direction"])
+
+    # Normalization
+    independents = ["dew", "temp", "press", "wind_direction", "wind_speed", "snow", "rain"]
+    dependent = "pollution"
+    x_scaler = MinMaxScaler(feature_range=(0, 1))
+    y_scaler = MinMaxScaler(feature_range=(0, 1))
+    x_scaler.fit(df[independents].values)
+    y_scaler.fit(df[dependent].values.reshape(-1, 1))
+
+    # Prepare predict function
+    wavenet = tf.keras.models.load_model(f"{DATA_DIR}/wavenet_mts_128_1.h5")
+    lstm = tf.keras.models.load_model(f"{DATA_DIR}/lstm_mts_128_1.h5")
+
+    def predict_fn(z, model):
+        _, steps, features = model.input.shape
+        z = z.reshape((1, steps, features))
+        z_hat = model.predict(z)
+        z_hat = y_scaler.inverse_transform(z_hat.reshape(-1, 1))  # to avoid zero coef_ for z_hat in[0, 1]
+        z_hat = z_hat.ravel()
+        return z_hat[0]
+
+    def lstm_predict_fn(z):
+        return predict_fn(z, model=lstm)
+
+    def wavenet_predict_fn(z):
+        return predict_fn(z, model=wavenet)
+
+    # 1- Load an instance
+    idx = 100
+    x = df[idx:idx + 128].copy()  # 128 steps
+    x[independents] = x_scaler.transform(x[independents].values)
+    ts_x = x[independents].values.reshape(7, 128)  # 7 features, 128 steps
+
+    # 2- Choose XAI model
+    #   Here - with LIME for Time Series (Perturbation)
+    #       - XAI estimator in default is Lasso(alpha=0.5)
+
+    ts_lime_zeros = LIMETimeSeries(scale='sync', window_size=4, sample_size=100, perturb_method='zeros')
+    ts_lime_mean = LIMETimeSeries(scale='sync', window_size=4, sample_size=100, perturb_method='local_mean')
+
+    lstm_zeros = ts_lime_zeros.explain_instances([ts_x, ts_x], predict_fn=lstm_predict_fn)
+    lstm_mean = ts_lime_mean.explain_instances([ts_x, ts_x], predict_fn=lstm_predict_fn)
+
+    wavenet_zeros = ts_lime_zeros.explain(ts_x, predict_fn=wavenet_predict_fn)
+    wavenet_mean = ts_lime_mean.explain(ts_x, predict_fn=wavenet_predict_fn)
+
+    models = [lstm_zeros, lstm_mean, wavenet_zeros, wavenet_mean]
+    names = ["lstm_zeros", "lstm_mean", "wavenet_zeros", "wavenet_mean"]
+
+    df_corr_1 = eva.corr_matrix(models, names)
+
+    # lstm_zeros.score
+    # lstm_zeros.plot_coef()
+    # eva.plot_corr(df_corr_1)
+    # wavenet_zeros.score, wavenet_mean.score

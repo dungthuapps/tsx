@@ -10,7 +10,7 @@ from sklearn import metrics
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 
-from ..perturbation import TimeSeriesPerturbation
+from ..perturbation import TimeSeriesPerturbation, SyncTimeSlicer
 
 
 class XAIModels:
@@ -73,7 +73,7 @@ class LIMEAbstract(ABC):
 class LIMETimeSeries(LIMEAbstract):
     """LIME for time series witch time slicing."""
 
-    def __init__(self, scale='normal', perturb_method='zeros',
+    def __init__(self, scale='async', perturb_method='zeros',
                  window_size=3, off_prob=0.5, sample_size=10, **kwargs):
         super().__init__(sample_size, **kwargs)
 
@@ -88,9 +88,16 @@ class LIMETimeSeries(LIMEAbstract):
         self.perturb_method = perturb_method
         self.off_p = off_prob
 
-        self.perturb_obj = TimeSeriesPerturbation(window_size, off_prob, perturb_method)
         self.xai_estimator = XAIModels.Lasso
         self.score = np.nan
+
+        # Set-up Perturbator
+        if scale == "async":
+            self.perturb_obj = TimeSeriesPerturbation(window_size, off_prob, perturb_method)
+        elif scale == 'sync':
+            self.perturb_obj = SyncTimeSlicer(window_size, off_prob, perturb_method)
+        else:
+            ValueError(f"Scale {scale} currently is not supported.")
 
     def _get_samples(self, x, predict_fn, sample_size, **kwargs):
         samples = self._perturbator.perturb(x, n_samples=sample_size, **kwargs)
@@ -157,15 +164,18 @@ class LIMETimeSeries(LIMEAbstract):
 
         coef_mean = coef.mean(axis=0)
         score_mean = score.mean(axis=0)
-        assert self.xai_estimator.coef_.shape == coef_mean.shape, \
+        assert self.coef.shape == coef_mean.shape, \
             "Not same shape between 2 coefficients"
 
         self.xai_estimator.coef_ = coef_mean
         self.score = score_mean
+        return copy.deepcopy(self)
 
     def plot_coef(self, feature_names=None, scaler=None, **kwargs):
-        coef = self.xai_estimator.coef_
-        coef_df = pd.DataFrame(coef.reshape(self.n_segments, self.n_features))
+        coef = self.xai_estimator.coef_.copy()
+        if self.scale == 'async':
+            coef = coef.reshape(self.n_segments, self.n_features)
+        coef_df = pd.DataFrame(coef)
         if feature_names:
             coef_df.columns = feature_names
         if scaler:

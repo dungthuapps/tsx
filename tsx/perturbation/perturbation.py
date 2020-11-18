@@ -308,7 +308,6 @@ class SyncTimeSlicer(TimeSeriesPerturbation):
         else:
             r = self._x_replacements(x, fn=self._replacement_fn)
 
-        # Todo: try to use numpy native function instead of for loop
         for i in range(n_samples):
             z_prime = self._z_prime(x)
             z = self._z(x, z_prime, r)

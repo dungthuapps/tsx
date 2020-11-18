@@ -77,3 +77,10 @@ def test_perturbation_sync_time_slicer():
 
     samples = t.perturb(mts, n_samples=10)
     z_prime, z, pi_z = next(samples)
+    assert len(z_prime) == len(_slices)  # for SyncTimeSlicer
+    assert z.shape == mts.shape and (pi_z <= 1) and (pi_z >= 0)
+
+    r = t._x_replacements(mts, fn='local_mean')
+    mask = t._x_masked(mts, z_prime)
+    target_z = mts * mask + r * (1 - mask)  # Formula for z
+    assert np.sum(z - target_z) == 0
