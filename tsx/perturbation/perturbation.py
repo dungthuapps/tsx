@@ -322,7 +322,6 @@ class ASyncTimeSlicer(SyncTimeSlicer):
 
         if slices is None:
             slices = list(self._slices(x))
-        
         n_segments = len(slices)        
         # assign label as increasing function
         for i in range(n_features):
