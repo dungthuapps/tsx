@@ -1,7 +1,11 @@
 import os
 import numpy as np
 
-from tsx.perturbation import TimeSeriesPerturbation, SyncTimeSlicer
+from tsx.perturbation import (
+    TimeSeriesPerturbation, 
+    SyncTimeSlicer,
+    ASyncTimeSlicer
+    )
 
 DATA_DIR = "tests/data" if os.path.isdir("tests") else "data"
 mts = np.array([np.arange(1, 9), np.arange(2, 10)])
@@ -84,3 +88,65 @@ def test_perturbation_sync_time_slicer():
     mask = t._x_masked(mts, z_prime)
     target_z = mts * mask + r * (1 - mask)  # Formula for z
     assert np.sum(z - target_z) == 0
+
+def test_perturbation_async():
+    t = ASyncTimeSlicer(window_size=3, replacement_method="local_mean")
+
+    # Assert x_segmented
+    x_segmented = t._x_segmented(mts)
+    target = np.array([[0, 0, 1, 1, 1, 2, 2, 2],
+                       [3, 3, 4, 4, 4, 5, 6, 6]])
+    print(x_segmented)
+    assert np.sum(x_segmented - target) == 0
+
+    # Assert masking
+    z_prime = np.array([1, 1, 0, 0, 1, 1])
+    x_masked = t._x_masked(mts, z_prime)
+    target = np.array([[1, 1, 1, 1, 1, 0, 0, 0],
+                        [0, 0, 1, 1, 1, 1, 1, 1]])
+    assert np.sum(x_masked - target) == 0
+
+    # Assert Replacements - Zeros
+    r_zeros = t._x_replacements(mts, 'zeros')
+    target = np.array([[0, 0, 0, 0, 0, 0, 0, 0],
+                       [0, 0, 0, 0, 0, 0, 0, 0]])
+    assert np.sum(r_zeros - target) == 0
+
+    # Assert Replacements - Local Mean
+    r_local_mean = t._x_replacements(mts, 'local_mean')
+    target = np.array([[1.5, 1.5, 4., 4., 4., 7., 7., 7.],
+                       [2.5, 2.5, 5., 5., 5., 8., 8., 8.]])
+    assert np.sum(r_local_mean - target) == 0
+
+    # Assert Replacements - Global Mean
+    r_global_mean = t._x_replacements(mts, 'global_mean')
+    target = np.array([[4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5],
+                       [5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5]])
+    assert np.sum(r_global_mean - target) == 0
+
+    # Assert z 
+    z_prime = np.array([1, 1, 0, 0, 1, 1])
+    
+    #   - Zeros
+    r = t._x_replacements(mts, 'zeros')
+    z = t._z(mts, z_prime, r)
+    target = np.array([[1. , 2. , 3. , 4. , 5. , 0. , 0. , 0. ],
+                        [0, 0, 4. , 5. , 6. , 7. , 8. , 9. ]])
+
+    assert np.sum(z - target) == 0
+
+    #   - local mean
+    r = t._x_replacements(mts, 'local_mean')
+    z = t._z(mts, z_prime, r)
+    target = np.array([[1. , 2. , 3. , 4. , 5. , 7. , 7. , 7. ],
+                        [2.5, 2.5, 4. , 5. , 6. , 7. , 8. , 9. ]])
+
+    assert np.sum(z - target) == 0
+
+    #   - Global mean
+    r = t._x_replacements(mts, 'global_mean')
+    z = t._z(mts, z_prime, r)
+    target = np.array([[1. , 2. , 3. , 4. , 5. , 4.5, 4.5, 4.5],
+                        [5.5, 5.5, 4. , 5. , 6. , 7. , 8. , 9. ]])
+
+    assert np.sum(z - target) == 0

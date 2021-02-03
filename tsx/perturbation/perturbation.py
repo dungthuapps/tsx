@@ -313,3 +313,32 @@ class SyncTimeSlicer(TimeSeriesPerturbation):
             z = self._z(x, z_prime, r)
             pi_z = self.__get_pi__(x, z)
             yield z_prime, z, pi_z
+
+class ASyncTimeSlicer(SyncTimeSlicer):
+
+    def _x_segmented(self, x, slices=None):
+        x_segmented = np.zeros_like(x)
+        n_features, _steps = x.shape
+
+        if slices is None:
+            slices = list(self._slices(x))
+
+        n_segments = len(slices)        
+        # assign label as increasing function
+        for i in range(n_features):
+            for s, e, l in slices:
+                x_segmented[i, s: e] =  i * n_segments + l
+        return x_segmented
+
+
+    # Temp not using _mask()
+    def _x_masked(self, x, z_prime):
+        slices = list(self._slices(x))
+        n_features, _steps = x.shape
+        mask = np.ones_like(x)
+        _z_prime = z_prime.reshape(n_features, -1)
+
+        for i in range(n_features):
+            for s, e, l in slices:
+                mask[i, s:e] = _z_prime[i, l]
+        return mask
