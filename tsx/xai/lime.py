@@ -10,7 +10,9 @@ from sklearn import metrics
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 
-from ..perturbation import TimeSeriesPerturbation, SyncTimeSlicer
+from ..perturbation import (TimeSeriesPerturbation, 
+                            SyncTimeSlicer,
+                            ASyncTimeSlicer)
 
 
 class XAIModels:
@@ -93,7 +95,7 @@ class LIMETimeSeries(LIMEAbstract):
 
         # Set-up Perturbator
         if scale == "async":
-            self.perturb_obj = TimeSeriesPerturbation(window_size, off_prob, perturb_method)
+            self.perturb_obj = ASyncTimeSlicer(window_size, off_prob, perturb_method)
         elif scale == 'sync':
             self.perturb_obj = SyncTimeSlicer(window_size, off_prob, perturb_method)
         else:
