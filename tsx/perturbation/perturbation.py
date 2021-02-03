@@ -322,12 +322,12 @@ class ASyncTimeSlicer(SyncTimeSlicer):
 
         if slices is None:
             slices = list(self._slices(x))
-        w_size = self.window_size
         
+        n_segments = len(slices)        
         # assign label as increasing function
-        for i in range(n_features):    
+        for i in range(n_features):
             for s, e, l in slices:
-                x_segmented[i, s: e] =  i * w_size + l
+                x_segmented[i, s: e] =  i * n_segments + l
         return x_segmented
 
     # Temp not using _mask()
