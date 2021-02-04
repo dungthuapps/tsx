@@ -80,7 +80,7 @@ def plt_x_instance(x_mts, title=""):
     fig = plt.gcf()
     plt_legend(fig, per_subplot=True)
 
-def plt_x_segmented(x_mts, window_size, title=""):
+def plt_x_segmented(x_mts, window_size, title="", label_pos=None):
     x_mts.plot(subplots=True, legend=False, title=title)
 
     fig = plt.gcf()
@@ -91,11 +91,13 @@ def plt_x_segmented(x_mts, window_size, title=""):
     plt_vlines(fig, n_steps, window_size=window_size)
     plt.subplots_adjust(hspace=.0)
 
-    ymin, ymax = fig.axes[-1].get_ylim()
-    plt_segment_labels(fig, n_steps, window_size, ymin - (ymax - ymin))
+    if not label_pos:
+        ymin, ymax = fig.axes[-1].get_ylim()
+        label_pos = ymin - (ymax - ymin)
+    plt_segment_labels(fig, n_steps, window_size, label_pos)
 
 # Visualization Perturbation - Async and z
-def plt_sample_z(x, z, z_prime, independents, window_size, hspace=.1, title=""):
+def plt_sample_z(x, z, z_prime, independents, window_size, hspace=.1, title="", label_pos=None):
     n_segments, n_steps = z.shape
     z_df = pd.DataFrame(z.T, columns=independents)
     z_df.plot(subplots=True, legend=False, title=title)
@@ -107,8 +109,10 @@ def plt_sample_z(x, z, z_prime, independents, window_size, hspace=.1, title=""):
     plt_rescale_to_x(fig, x)
     plt_vlines(fig, n_steps, window_size=window_size)
 
-    ymin, ymax = fig.axes[-1].get_ylim()
-    plt_segment_labels(fig, n_steps, window_size, ymin - (ymax - ymin))
+    if not label_pos:
+        ymin, ymax = fig.axes[-1].get_ylim()
+        label_pos = ymin - (ymax - ymin)
+    plt_segment_labels(fig, n_steps, window_size, label_pos)
 
     # Highlight and rescale ylim to original
     plt_highlight_perturbed_area(fig, z_prime, n_steps, window_size)
@@ -154,11 +158,9 @@ def plt_sample_z_prime(z_prime, ylabels=None, xlabels=None):
               handles=legend_elements
               )
 
-def plt_coef(x, coef, feature_names=None, scaler=None, **kwargs):
+def plt_coef(coef, feature_names=None, scaler=None, **kwargs):
     
-    n_features, n_steps = x.shape
-    n_segments = len(coef)
-    coef = coef.reshape(n_features, -1) # async
+    # coef = coef.reshape(n_features, -1)
     coef_df = pd.DataFrame(coef.T)  # back to (n_steps, n_cols)
     if feature_names:
         coef_df.columns = feature_names   
