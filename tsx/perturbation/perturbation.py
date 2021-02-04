@@ -275,6 +275,12 @@ class SyncTimeSlicer(TimeSeriesPerturbation):
         z = x * mask + replacements * (1 - mask)
         return z
 
+
+    def to_original(self, x, z_prime, repl_fn='zeros'):
+        r = self._x_replacements(x, fn=repl_fn)
+        z = self._z(x, z_prime, r)
+        return z
+
     @staticmethod
     def zeros(x, **kwargs):
         return np.zeros_like(x)

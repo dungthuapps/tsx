@@ -150,3 +150,47 @@ def test_perturbation_async():
                         [5.5, 5.5, 4. , 5. , 6. , 7. , 8. , 9. ]])
 
     assert np.sum(z - target) == 0
+
+def test_to_original():
+    t = ASyncTimeSlicer(window_size=3)
+    
+    # ------ UTS -------
+    z_prime = np.array([1, 0, 1])
+    # uts - zeros
+    z = t.to_original(uts, z_prime, repl_fn='zeros')
+    target = np.array([[1, 2, 0, 0, 0, 6, 7, 8]])
+    assert np.sum(z - target) == 0
+
+    # uts - local_mean
+    z = t.to_original(uts, z_prime, repl_fn='local_mean')
+    target = np.array([[1, 2, 4, 4, 4, 6, 7, 8]])
+    assert np.sum(z - target) == 0
+
+    # uts - global_mean
+    z = t.to_original(uts, z_prime, repl_fn='global_mean')
+    target = np.array([[1, 2, 4.5, 4.5, 4.5, 6, 7, 8]])
+    assert np.sum(z - target) == 0
+
+    # ------ MTS -------
+    z_prime = np.array([1, 1, 0, 0, 1, 1])
+    
+    # mts - Zeros
+    z = t.to_original(mts, z_prime, repl_fn='zeros')
+    target = np.array([[1. , 2. , 3. , 4. , 5. , 0. , 0. , 0. ],
+                        [0, 0, 4. , 5. , 6. , 7. , 8. , 9. ]])
+
+    assert np.sum(z - target) == 0
+
+    # mts - local_mean
+    z = t.to_original(mts, z_prime, repl_fn='local_mean')
+    target = np.array([[1. , 2. , 3. , 4. , 5. , 7. , 7. , 7. ],
+                        [2.5, 2.5, 4. , 5. , 6. , 7. , 8. , 9. ]])
+
+    assert np.sum(z - target) == 0
+
+    # mts - global_mean
+    z = t.to_original(mts, z_prime, repl_fn='global_mean')
+    target = np.array([[1. , 2. , 3. , 4. , 5. , 4.5, 4.5, 4.5],
+                        [5.5, 5.5, 4. , 5. , 6. , 7. , 8. , 9. ]])
+
+    assert np.sum(z - target) == 0
