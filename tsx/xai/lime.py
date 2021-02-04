@@ -191,8 +191,12 @@ class LIMETimeSeries(LIMEAbstract):
     def get_a_local_sample(self):
         if len(self._z_prime) > 0:
             idx = np.random.choice(self.sample_size)
-            return (self._z_prime[idx].reshape(self.n_features, self.n_segments),
-                    self._z[idx].reshape(self.n_features, self.n_steps),
-                    self._z_hat[idx],
-                    self._sample_weight[idx]
-                    )
+            z_prime = self._z_prime[idx]
+            if self.scale == 'sync':
+                z_prime = np.broadcast_to(z_prime, (self.n_features, len(z_prime)))
+            else:
+                z_prime = z_prime.reshape(self.n_features, self.n_segments)
+            z = self._z[idx].reshape(self.n_features, self.n_steps)
+            z_hat = self._z_hat[idx]
+            w = self._sample_weight[idx]
+            return (z_prime, z, z_hat, w)
