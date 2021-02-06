@@ -3,9 +3,12 @@ import pyts
 import pandas as pd
 import numpy as np
 
+import matplotlib.colors as colors
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
+from matplotlib.collections import LineCollection
 
 
 def plt_legend(fig, per_subplot=False):
@@ -173,7 +176,68 @@ def plt_coef(coef, feature_names=None, scaler=None, **kwargs):
     coef_df.plot(**kwargs)
 
     fig = plt.gcf()
+    fig.axes[int(len(coef_df.columns)/2 + 1)].set_ylabel("Weights")
+    plt.xlabel("Features (Windows)")
     plt_legend(fig, per_subplot=True)
     plt.subplots_adjust(hspace=0.2)
 
     plt_hide_subplot_title(fig)
+
+
+def plt_x_coef(x, w, c=None, names=None):
+    n_features, n_steps = x.shape
+    assert x.shape[0] == w.shape[0], \
+        f"Shape of x {x.shape} does not match the weights {w.shape}"
+    if isinstance(c, list):
+        assert n_features == len(c), \
+        f"length of c {len(c)} does not match x features{n_features}"
+    if isinstance(c, str):
+        c = np.repeat(c, n_features)
+    if c is None:
+        c = np.repeat("Reds", n_features)
+
+    if names is None:
+        names = np.repeat(None, n_features)
+    
+    fig, axes = plt.subplots(n_features,1)
+    for i, ax in enumerate(axes):
+        _plt_xcoef(ax, x[i], w[i], c[i], names[i])
+            # ax.set_ylabel(names[i], 
+            #    rotation='horizontal', 
+            #    horizontalalignment='right')
+
+
+def _plt_xcoef(ax, x_ts, w, c=None, name=None):
+        # Create coordinates (x, y)
+        coords = list(enumerate(x_ts))
+
+        # Line-starts from : 0 -> semi-last (-1)
+        starts = coords[:-1]
+
+        # Line-ends from : 1 -> final
+        ends = coords[1:]
+
+        # Colors
+        if not isinstance(c, str):
+            c = "Reds"
+        color_map = plt.cm.get_cmap(c)
+        color_norm = colors.Normalize()
+
+        # Line intervals
+        lines = [(start, end) for start, end in zip(starts, ends)]
+        lines_lc = LineCollection(
+            lines, 
+            # linewidths= 1 + w * 2, 
+            array=w, 
+            # norm=color_norm, 
+            cmap=color_map,
+        )
+
+        line = ax.add_collection(lines_lc)
+        ax.autoscale()
+        # plt.colorbar(line)
+        if name is not None:
+            # Custom Legend for LineCollection
+            handle = Line2D([0, 1], [0, 1], color=lines_lc.cmap(0.5))
+            ax.legend([handle], [name], loc='center left', bbox_to_anchor=(1.0, 0.5))
+    
