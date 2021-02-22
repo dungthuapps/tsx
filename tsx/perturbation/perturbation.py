@@ -226,11 +226,9 @@ class SyncTimeSlicer(TimeSeriesPerturbation):
 
     @staticmethod
     def _mask(arr, z_prime, slices):
-        i = 0
         m = np.zeros_like(arr)
         for s, e, l in slices:
-            m[s:e] = z_prime[i]
-            i += 1
+            m[s:e] = z_prime[l]
         return m
 
     def _x_masked(self, x, z_prime):

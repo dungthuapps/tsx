@@ -32,6 +32,45 @@ def plt_hide_yticks(fig):
     for ax in fig.axes:
         ax.set_yticks([])
 
+def plt_hide_xticks(fig):
+    for ax in fig.axes:
+        ax.set_xticks([])
+
+def plt_hide_text(fig):
+    ax = fig.gca()
+    for txt in ax.texts:
+        txt.set_visible(False)
+
+def plt_hide_ticks(fig):
+    plt_hide_xticks(fig)
+    plt_hide_yticks(fig)
+
+def plt_hide_legends(fig):
+    for ax in fig.axes:
+        ax.get_legend().remove()
+
+# Hide xlabels
+def plt_hide_subplot_xlabel(fig):
+    for ax in fig.axes:
+        x_axis = ax.axes.get_xaxis()
+        x_label = x_axis.get_label()
+        x_label.set_visible(False)
+
+# Hide xlabels
+def plt_hide_labels(fig):
+    for ax in fig.axes:
+        ax.axes.get_xaxis().get_label().set_visible(False)
+        ax.axes.get_yaxis().get_label().set_visible(False)
+
+def plt_hide_subplot_title(fig):
+    # Hide title of each subplot
+    for ax in fig.axes:
+        ax.set_title("")
+
+def plt_limit_xaxes(fig, xmin, xmax):
+    for ax in fig.axes:
+        ax.set_xlim(xmin=xmin, xmax=xmax)
+
 def plt_vlines(fig, n_steps=128, window_size=4, **kwargs):
     starts, ends, n_windows = pyts.utils.segmentation(n_steps, window_size, overlapping=False)
     vlines_pos = [0] + list(ends)   # vlines positions from 0
@@ -64,18 +103,6 @@ def plt_highlight_perturbed_area(fig, z_prime, n_steps, w_size):
         for s, e, w in zip(starts, ends, range(n_windows)):
             if z_prime[i, w] == 0:
                 ax.axvspan(s, e, color='gold', alpha=0.8)
-
-# Hide xlabels
-def plt_hide_subplot_xlabel(fig):
-    for ax in fig.axes:
-        x_axis = ax.axes.get_xaxis()
-        x_label = x_axis.get_label()
-        x_label.set_visible(False)
-
-def plt_hide_subplot_title(fig):
-    # Hide title of each subplot
-    for ax in fig.axes:
-        ax.set_title("")
 
 def plt_x_instance(x_mts, title=""):
     x_mts.plot(subplots=True, legend=False, title=title)
@@ -161,7 +188,7 @@ def plt_sample_z_prime(z_prime, ylabels=None, xlabels=None):
               handles=legend_elements
               )
 
-def plt_coef(coef, feature_names=None, scaler=None, **kwargs):
+def plt_coef(coef, feature_names=None, scaler=None, ylabel="Weights", **kwargs):
     
     # coef = coef.reshape(n_features, -1)
     coef_df = pd.DataFrame(coef.T)  # back to (n_steps, n_cols)
@@ -176,7 +203,9 @@ def plt_coef(coef, feature_names=None, scaler=None, **kwargs):
     coef_df.plot(**kwargs)
 
     fig = plt.gcf()
-    fig.axes[int(len(coef_df.columns)/2 + 1)].set_ylabel("Weights")
+    
+    if ylabel:
+        fig.text(0.04, 0.5, ylabel, va='center', rotation='vertical')
     plt.xlabel("Features (Windows)")
     plt_legend(fig, per_subplot=True)
     plt.subplots_adjust(hspace=0.2)
@@ -184,7 +213,7 @@ def plt_coef(coef, feature_names=None, scaler=None, **kwargs):
     plt_hide_subplot_title(fig)
 
 
-def plt_x_coef(x, w, c=None, names=None):
+def plt_x_coef(x, w, c=None, names=None, **kwargs):
     n_features, n_steps = x.shape
     assert x.shape[0] == w.shape[0], \
         f"Shape of x {x.shape} does not match the weights {w.shape}"
@@ -207,7 +236,7 @@ def plt_x_coef(x, w, c=None, names=None):
             #    horizontalalignment='right')
 
 
-def _plt_xcoef(ax, x_ts, w, c=None, name=None):
+def _plt_xcoef(ax, x_ts, w, c=None, name=None, bold=0, **kwargs):
         # Create coordinates (x, y)
         coords = list(enumerate(x_ts))
 
@@ -237,7 +266,8 @@ def _plt_xcoef(ax, x_ts, w, c=None, name=None):
         ax.autoscale()
         # plt.colorbar(line)
         if name is not None:
+            pos_of_name = 0.5   # center between 0 - 1
             # Custom Legend for LineCollection
-            handle = Line2D([0, 1], [0, 1], color=lines_lc.cmap(0.5))
+            handle = Line2D([0, 1], [0, 1], color=lines_lc.cmap(pos_of_name))
             ax.legend([handle], [name], loc='center left', bbox_to_anchor=(1.0, 0.5))
     
