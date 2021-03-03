@@ -226,11 +226,9 @@ class SyncTimeSlicer(TimeSeriesPerturbation):
 
     @staticmethod
     def _mask(arr, z_prime, slices):
-        i = 0
         m = np.zeros_like(arr)
         for s, e, l in slices:
-            m[s:e] = z_prime[i]
-            i += 1
+            m[s:e] = z_prime[l]
         return m
 
     def _x_masked(self, x, z_prime):
@@ -328,14 +326,12 @@ class ASyncTimeSlicer(SyncTimeSlicer):
 
         if slices is None:
             slices = list(self._slices(x))
-
         n_segments = len(slices)        
         # assign label as increasing function
         for i in range(n_features):
             for s, e, l in slices:
                 x_segmented[i, s: e] =  i * n_segments + l
         return x_segmented
-
 
     # Temp not using _mask()
     def _x_masked(self, x, z_prime):

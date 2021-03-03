@@ -142,3 +142,4 @@ cython_debug/
 # Editor setting folders
 .vscode/
 .idea/
+.DS_Store
